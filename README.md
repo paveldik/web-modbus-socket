@@ -1,52 +1,57 @@
 # modbus-api
 
-HTTP-обёртка над Modbus-TCP устройствами для взаимодействия с MODBUS-TCP
-устройствами из браузера, а также для интеграции через web-api с 1С.
+[Русская версия](README.ru.md)
 
-PHP-скрипт принимает HTTP-запрос, запускает Python-скрипт на базе
-[`pymodbus`](https://github.com/pymodbus-dev/pymodbus), тот общается с
-Modbus-TCP slave-устройством, а результат возвращается в виде JSON.
-Поддерживается чтение группы holding-регистров (`fcode=3`) и запись
-группы регистров (`fcode=16`), а также приведение прочитанных значений
-к человекочитаемому виду (`float`, `int`, `uint`, `utime`, `coil`).
+An HTTP wrapper for Modbus-TCP devices. It enables communication with
+Modbus-TCP devices from a browser and integration with 1C through a web API.
 
-## Структура репозитория
+The PHP script accepts an HTTP request and runs a Python script based on
+[`pymodbus`](https://github.com/pymodbus-dev/pymodbus). The Python script
+communicates with a Modbus-TCP slave and returns the result as JSON. The API
+supports reading a group of holding registers (`fcode=3`) and writing a group
+of registers (`fcode=16`), as well as converting read values to human-readable
+types (`float`, `int`, `uint`, `utime`, `coil`).
+
+## Repository structure
 
 ```text
 .
 ├── README.md
+├── README.ru.md
 ├── requirements.txt
 └── html/
-    ├── modbus.py        # Python-обёртка над pymodbus
-    └── web_socket.php   # HTTP-API (точка входа)
+    ├── modbus.py        # Python wrapper for pymodbus
+    └── web_socket.php   # HTTP API entry point
 ```
 
-## Требования
+## Requirements
 
-- Linux (проверено на Debian/Ubuntu)
-- Python **3.8** (код совместим с 3.8–3.11; на 3.12+ возможны проблемы
-  из-за устаревших зависимостей `pymodbus==2.5.3`)
-- PHP **7.1+** (используется `?string` в сигнатуре функции и `JSON_UNESCAPED_UNICODE`)
-- Веб-сервер (nginx/apache) с PHP-FPM или mod_php
-- Доступ к Modbus-TCP slave-устройству по сети
+- Linux (tested on Debian/Ubuntu)
+- Python **3.8** (the code is compatible with 3.8–3.11; Python 3.12+ may have
+  issues due to the outdated `pymodbus==2.5.3` dependencies)
+- PHP **7.1+** (`?string` in function signatures and `JSON_UNESCAPED_UNICODE`
+  are used)
+- A web server (nginx/apache) with PHP-FPM or mod_php
+- Network access to a Modbus-TCP slave device
 
-## Установка
+## Installation
 
-### 1. Клонирование репозитория
+### 1. Clone the repository
 
-Разместите содержимое папки `html/` в document root веб-сервера, например:
+Place the contents of the `html/` directory in the web server's document root,
+for example:
 
 ```bash
 sudo mkdir -p /var/www/modbus-api
-sudo git clone <URL_репозитория> /tmp/modbus-api
+sudo git clone <REPOSITORY_URL> /tmp/modbus-api
 sudo cp /tmp/modbus-api/html/* /var/www/modbus-api/
 sudo cp /tmp/modbus-api/requirements.txt /var/www/modbus-api/
 ```
 
-### 2. Виртуальное окружение Python (вне document root)
+### 2. Python virtual environment (outside the document root)
 
-Виртуальное окружение намеренно размещается **вне** каталога, отдаваемого
-веб-сервером, — чтобы его файлы нельзя было запросить по HTTP.
+The virtual environment is intentionally located **outside** the directory
+served by the web server so its files cannot be requested over HTTP.
 
 ```bash
 sudo python3 -m venv /usr/share/modbus-api/venv
@@ -54,105 +59,107 @@ sudo /usr/share/modbus-api/venv/bin/pip install --upgrade pip
 sudo /usr/share/modbus-api/venv/bin/pip install -r /var/www/modbus-api/requirements.txt
 ```
 
-Проверка:
+Verify the installation:
 
 ```bash
 /usr/share/modbus-api/venv/bin/python -c "import pymodbus; print(pymodbus.__version__)"
-# ожидаемо: 2.5.3
+# expected: 2.5.3
 ```
 
-### 3. Права доступа для веб-сервера
+### 3. Web server permissions
 
-Пользователь веб-сервера (`www-data`, `apache`, `nginx` — зависит от дистрибутива)
-должен иметь право читать и исполнять файлы venv и читать `modbus.py`:
+The web server user (`www-data`, `apache`, or `nginx`, depending on the
+distribution) must be able to read and execute the virtual environment files
+and read `modbus.py`:
 
 ```bash
-# вариант через группу (аккуратнее):
+# Group-based access (recommended):
 sudo chgrp -R www-data /usr/share/modbus-api/venv
 sudo chmod -R g+rX /usr/share/modbus-api/venv
 sudo chmod o+rx /usr/share/modbus-api
 
-# либо, если не смущает «широкий» доступ на чтение:
+# Alternatively, if broad read access is acceptable:
 # sudo chmod -R o+rX /usr/share/modbus-api/venv
 ```
 
-Проверка от имени веб-сервера:
+Test as the web server user:
 
 ```bash
 sudo -u www-data /usr/share/modbus-api/venv/bin/python \
     /var/www/modbus-api/modbus.py 3 localhost 502 10304 2 none
-# ожидаемо: строка JSON (даже если Error=2 — не смогли соединиться)
+# expected: a JSON string (even if Error=2 because the connection failed)
 ```
 
-### 4. Настройка пути к Python в PHP
+### 4. Configure the Python path in PHP
 
-В `web_socket.php` в начале файла заданы две константы:
+Two constants are defined near the beginning of `web_socket.php`:
 
 ```php
 define('PYTHON_BIN', '/usr/share/modbus-api/venv/bin/python');
 define('MODBUS_SCRIPT', __DIR__ . '/modbus.py');
 ```
 
-`PYTHON_BIN` **должен** быть абсолютным путём к Python из venv. Если вы
-разместили venv в другом месте — измените эту строку. Не заменяйте её на
-просто `python3`: у пользователя веб-сервера `PATH` может отличаться, и
-скрипт подхватит системный Python без `pymodbus`.
+`PYTHON_BIN` **must** be the absolute path to the Python interpreter in the
+virtual environment. If the virtual environment is located elsewhere, update
+this line. Do not replace it with just `python3`: the web server user's `PATH`
+may be different, causing the script to use the system Python without
+`pymodbus`.
 
-`MODBUS_SCRIPT` через `__DIR__` даёт абсолютный путь к `modbus.py` рядом
-с PHP-файлом, независимо от текущей рабочей директории процесса.
+`MODBUS_SCRIPT` uses `__DIR__` to provide the absolute path to `modbus.py`
+alongside the PHP file, regardless of the process's current working directory.
 
-### 5. Проверка API
+### 5. Test the API
 
 ```bash
 curl -s "http://<host>/modbus/web_socket.php?ip=localhost&port=502&fcode=3&reg_addr=10304&r_count=2&type=none"
 ```
 
-Ожидаемо (если Modbus-slave недоступен) — JSON с ошибкой:
+If the Modbus slave is unavailable, the expected response is a JSON error:
 
 ```json
 {"Error":"103","ErrorText":"Модуль чтения Modbus вернул ошибку: Не удалось соединиться с Modbus-Slave"}
 ```
 
-Если слейв доступен — `Error` будет `0`, в ответе появятся `Data` и,
-для `type != none` при `r_count=2`, — `ConvData`.
+If the slave is available, `Error` will be `0`, and the response will include
+`Data` and, for `type != none` with `r_count=2`, `ConvData`.
 
-## Использование
+## Usage
 
-### Параметры запроса
+### Request parameters
 
-| Параметр  | Обязателен        | Описание                                                                 |
-|-----------|-------------------|--------------------------------------------------------------------------|
-| `ip`      | да                | IP-адрес или hostname Modbus-TCP slave                                   |
-| `port`    | да                | TCP-порт slave (обычно 502)                                              |
-| `fcode`   | да                | `3` — чтение holding-регистров, `16` — запись holding-регистров          |
-| `reg_addr`| да                | Адрес первого регистра                                                   |
-| `r_count` | да                | Количество регистров                                                     |
-| `data`    | для `fcode=16`    | Список 16-битных значений `0..65535` через запятую                       |
-| `type`    | нет (по умолч. `none`) | Тип приведения прочитанного значения: `none`, `float`, `int`, `uint`, `utime`, `coil` |
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ip` | yes | IP address or hostname of the Modbus-TCP slave |
+| `port` | yes | Slave TCP port (usually 502) |
+| `fcode` | yes | `3` — read holding registers; `16` — write holding registers |
+| `reg_addr` | yes | Address of the first register |
+| `r_count` | yes | Number of registers |
+| `data` | for `fcode=16` | Comma-separated list of 16-bit values (`0..65535`) |
+| `type` | no (default: `none`) | Read-value conversion type: `none`, `float`, `int`, `uint`, `utime`, `coil` |
 
-Параметры принимаются и через `GET`, и через `POST`.
-Порт должен быть в диапазоне `1..65535`, адрес регистра — `0..65535`.
-Чтение поддерживает от 1 до 125 регистров, запись — от 1 до 123; запрос
-не может выходить за адрес `65535`. Записываемые значения должны быть
-целыми числами `0..65535`.
+Parameters can be passed via either `GET` or `POST`.
+The port must be in the range `1..65535`, and the register address in
+`0..65535`. Reading supports 1 to 125 registers; writing supports 1 to 123.
+A request must not exceed address `65535`. Values to be written must be
+integers in the range `0..65535`.
 
-### Чтение (`fcode=3`)
+### Read (`fcode=3`)
 
 ```bash
-# 2 регистра, без приведения
+# 2 registers, without conversion
 curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=3&reg_addr=10304&r_count=2&type=none"
 
-# 2 регистра как float (порядок байт Big-endian, порядок слов Little-endian)
+# 2 registers as float (big-endian byte order, little-endian word order)
 curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=3&reg_addr=10304&r_count=2&type=float"
 
-# 2 регистра как unix-time (с поправкой +4 часа от UTC)
+# 2 registers as Unix time (with a +4-hour offset from UTC)
 curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=3&reg_addr=10304&r_count=2&type=utime"
 
-# 2 регистра как набор битов (coil)
+# 2 registers as a set of bits (coil)
 curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=3&reg_addr=10304&r_count=2&type=coil"
 ```
 
-Пример успешного ответа:
+Example of a successful response:
 
 ```json
 {
@@ -164,54 +171,54 @@ curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=3&reg_a
 }
 ```
 
-Для `type=utime` дополнительно возвращаются поля `Time` и `Time1c`
-(в форматах `YYYY-MM-DD HH:MM:SS` и `YYYYMMDDHHMMSS0000` соответственно).
+For `type=utime`, the response also includes `Time` and `Time1c` fields
+(formatted as `YYYY-MM-DD HH:MM:SS` and `YYYYMMDDHHMMSS0000`, respectively).
 
-### Запись (`fcode=16`)
+### Write (`fcode=16`)
 
 ```bash
 curl -s "http://<host>/modbus/web_socket.php?ip=10.0.6.25&port=502&fcode=16&reg_addr=1000&r_count=2&data=1234,3241"
 ```
 
-Ожидаемый ответ:
+Expected response:
 
 ```json
 {"Error":"0","ErrorText":""}
 ```
 
-> ⚠️ Запись выполняется в реальные регистры устройства. Убедитесь, что
-> `reg_addr` указывает на безопасный для записи регистр. Не используйте
-> для тестов регистры управления оборудованием.
+> ⚠️ Writes modify real device registers. Make sure `reg_addr` points to a
+> register that is safe to write. Do not use equipment control registers for
+> testing.
 
-## Коды ошибок API
+## API error codes
 
-| Код | Что означает                                                          |
-|-----|-----------------------------------------------------------------------|
-| 1   | Не указан `fcode`                                                     |
-| 2   | Неподдерживаемый `fcode` (допустимы только 3 и 16)                    |
-| 3   | Не указан `ip`                                                        |
-| 6   | Не указан `port`                                                      |
-| 7   | Не указан `reg_addr`                                                  |
-| 9   | Не указан `r_count`                                                   |
-| 10  | Количество значений в `data` не совпадает с `r_count`                 |
-| 12  | Для `fcode=16` не передан `data`                                      |
-| 13  | Параметр должен быть целым неотрицательным числом                     |
-| 14  | Числовой параметр или диапазон регистров вне допустимых границ        |
-| 15  | Некорректный `type` или значение `data`                               |
-| 103 | `modbus.py` вернул ошибку при чтении (например, нет связи со slave)   |
-| 116 | `modbus.py` вернул ошибку при записи                                  |
-| 203 | Не удалось получить/распарсить ответ `modbus.py` при чтении           |
-| 216 | Не удалось получить/распарсить ответ `modbus.py` при записи           |
+| Code | Meaning |
+|------|---------|
+| 1 | `fcode` was not specified |
+| 2 | Unsupported `fcode` (only 3 and 16 are allowed) |
+| 3 | `ip` was not specified |
+| 6 | `port` was not specified |
+| 7 | `reg_addr` was not specified |
+| 9 | `r_count` was not specified |
+| 10 | Number of values in `data` does not match `r_count` |
+| 12 | `data` was not provided for `fcode=16` |
+| 13 | Parameter must be a non-negative integer |
+| 14 | Numeric parameter or register range is outside the allowed limits |
+| 15 | Invalid `type` or `data` value |
+| 103 | `modbus.py` returned a read error (for example, no connection to the slave) |
+| 116 | `modbus.py` returned a write error |
+| 203 | Failed to receive or parse the `modbus.py` response during a read |
+| 216 | Failed to receive or parse the `modbus.py` response during a write |
 
-При ошибках запуска или некорректном ответе Python API возвращает
-обобщённое сообщение, а диагностическая информация записывается в журнал
-ошибок PHP. Ожидание ответа Python ограничено пятью секундами; время
-сетевого обмена с устройством ограничено настройкой клиента Modbus.
+If Python fails to start or returns an invalid response, the API returns a
+generic message, while diagnostic information is written to the PHP error log.
+The wait for a Python response is limited to five seconds; network
+communication time with the device is limited by the Modbus client settings.
 
-## Как это работает
+## How it works
 
 ```text
-1С / curl
+1C / curl
    │
    ▼
 web_socket.php  ──(shell_exec, escapeshellarg)──►  venv/bin/python modbus.py <args>
@@ -223,24 +230,24 @@ web_socket.php  ──(shell_exec, escapeshellarg)──►  venv/bin/python mod
                                                      Modbus-TCP slave
 ```
 
-- `web_socket.php` проверяет параметры и диапазоны, запускает Python с
-  безопасно экранированными аргументами и ограничением времени ожидания.
-- `modbus.py` читает аргументы, выполняет операцию через `pymodbus`,
-  при необходимости декодирует 32-битные значения и возвращает JSON.
-- PHP парсит JSON и отдаёт его клиенту как есть (или оборачивает в
-  ошибку с кодом из таблицы выше).
+- `web_socket.php` validates parameters and ranges, runs Python with safely
+  escaped arguments, and enforces a timeout.
+- `modbus.py` reads the arguments, performs the operation through `pymodbus`,
+  decodes 32-bit values when needed, and returns JSON.
+- PHP parses the JSON and returns it to the client as-is (or wraps it in an
+  error with a code from the table above).
 
-## Обновление окружения
+## Updating the environment
 
-При изменении зависимостей:
+When dependencies change:
 
 ```bash
 sudo /usr/share/modbus-api/venv/bin/pip install -r /var/www/modbus-api/requirements.txt
 sudo /usr/share/modbus-api/venv/bin/pip freeze > /var/www/modbus-api/requirements.txt
 ```
 
-Не коммитьте в репозиторий папку venv — только `requirements.txt`.
-В `.gitignore` должны быть:
+Do not commit the virtual environment directory to the repository; commit
+`requirements.txt` only. `.gitignore` should contain:
 
 ```text
 env/
@@ -249,29 +256,27 @@ __pycache__/
 *.pyc
 ```
 
-## Ограничение сетевого доступа
+## Restricting network access
 
-Размещайте API только в доверенной локальной сети и ограничьте доступ к
-нему средствами веб-сервера или сетевого экрана. Запись изменяет реальные
-регистры устройства; для доступа из недоверенных сетей сначала добавьте
-аутентификацию и HTTPS.
+Deploy the API only on a trusted local network and restrict access using the
+web server or a firewall. Writes modify real device registers. Before making
+the API available on untrusted networks, add authentication and HTTPS.
 
-## Известные ограничения
+## Known limitations
 
-- `pymodbus==2.5.3` требует Python ≤ 3.11. На Python 3.12+ установка
-  может падать из-за устаревших зависимостей.
-- Приведение `type=float/int/uint/utime/coil` работает только при
-  `r_count=2` (одно 32-битное значение = два 16-битных регистра).
-- Порядок байт/слов жёстко задан в `modbus.py`:
-  `byteorder=Endian.Big`, `wordorder=Endian.Little`. Если ваше устройство
-  отдаёт данные в другом порядке — правьте соответствующие строки.
-- Для `type=coil` порядок битов «склеивается» вручную
+- `pymodbus==2.5.3` requires Python ≤ 3.11. Installation may fail on Python
+  3.12+ due to outdated dependencies.
+- Conversion with `type=float/int/uint/utime/coil` works only with
+  `r_count=2` (one 32-bit value uses two 16-bit registers).
+- Byte and word order are fixed in `modbus.py`:
+  `byteorder=Endian.Big`, `wordorder=Endian.Little`. If your device uses a
+  different order, update the corresponding lines.
+- For `type=coil`, the bit order is assembled manually
   (`tank_cur_bits1 + tank_cur_bits0 + tank_cur_bits3 + tank_cur_bits2`).
-  Это специфично для конкретного устройства; при необходимости
-  скорректируйте под свою битовую раскладку.
-- `utime` жёстко прибавляет `4*3600` секунд (UTC+4). Если ваш регион
-  другой — поправьте в `modbus.py`.
+  This is specific to the device; adjust it to match your bit layout if needed.
+- `utime` always adds `4*3600` seconds (UTC+4). If your region uses a
+  different offset, update `modbus.py`.
 
-## Лицензия
+## License
 
-Если не указано иное — уточните лицензию у владельца репозитория.
+Unless stated otherwise, contact the repository owner to clarify the license.
